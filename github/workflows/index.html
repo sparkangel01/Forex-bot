@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gold SMC Signals</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            display: flex;
+            justify-content: center;
+            padding: 2rem 1rem;
+            min-height: 100vh;
+        }
+        .container {
+            width: 100%;
+            max-width: 480px;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1rem; }
+        h1 { font-size: 1.25rem; color: #f0b90b; letter-spacing: 0.5px; }
+        .timestamp { font-size: 0.75rem; color: #8b949e; }
+        .price-display { margin-bottom: 1.5rem; }
+        .price { font-size: 2.5rem; font-weight: 700; color: #58a6ff; font-variant-numeric: tabular-nums; }
+        .price-unit { font-size: 0.875rem; color: #8b949e; }
+        .bias-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 0.5rem;
+        }
+        .bias-bullish { background: #0d2818; color: #3fb950; border: 1px solid #238636; }
+        .bias-bearish { background: #2a0d0d; color: #f85149; border: 1px solid #da3633; }
+        .bias-neutral { background: #21262d; color: #8b949e; border: 1px solid #30363d; }
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+        .stat { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 0.75rem; }
+        .stat-label { font-size: 0.65rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.25rem; }
+        .stat-value { font-size: 1.1rem; font-weight: 600; color: #c9d1d9; font-variant-numeric: tabular-nums; }
+        .stat-sub { font-size: 0.75rem; color: #8b949e; margin-top: 0.25rem; }
+        .error { color: #f85149; font-size: 0.875rem; text-align: center; padding: 2rem 0; }
+        .loading { color: #8b949e; font-size: 0.875rem; text-align: center; padding: 2rem 0; }
+    </style>
+</head>
+<body>
+    <div class="container" id="app">
+        <div class="loading">Loading gold signals...</div>
+    </div>
+
+    <script>
+        function formatPrice(n) {
+            if (n === null || n === undefined) return 'N/A';
+            return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+
+        function render(data) {
+            const app = document.getElementById('app');
+
+            if (data.error) {
+                app.innerHTML = `<div class="error">⚠️ Error: ${data.error}</div>`;
+                return;
+            }
+
+            const biasClass = data.bias === 'BULLISH' ? 'bias-bullish' : 
+                              data.bias === 'BEARISH' ? 'bias-bearish' : 'bias-neutral';
+
+            let fvgHtml = '<div class="stat-sub">None detected</div>';
+            if (data.nearest_fvg && data.nearest_fvg.Top) {
+                const fvgType = data.nearest_fvg.FVG === 1 ? 'Bullish' : 'Bearish';
+                fvgHtml = `
+                    <div class="stat-value">${formatPrice(data.nearest_fvg.Top)}</div>
+                    <div class="stat-sub">${fvgType} FVG (Bottom: ${formatPrice(data.nearest_fvg.Bottom)})</div>
+                `;
+            }
+
+            let obHtml = '<div class="stat-sub">None detected</div>';
+            if (data.nearest_ob && data.nearest_ob.Top) {
+                const obType = data.nearest_ob.OB === 1 ? 'Bullish' : 'Bearish';
+                obHtml = `
+                    <div class="stat-value">${formatPrice(data.nearest_ob.Top)}</div>
+                    <div class="stat-sub">${obType} OB (Bottom: ${formatPrice(data.nearest_ob.Bottom)})</div>
+                `;
+            }
+
+            const timeStr = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Unknown';
+
+            app.innerHTML = `
+                <div class="header">
+                    <h1>XAUUSD · SMC</h1>
+                    <div class="timestamp">${timeStr}</div>
+                </div>
+                <div class="price-display">
+                    <div class="price">${formatPrice(data.price)}</div>
+                    <div class="price-unit">USD / troy ounce</div>
+                    <div class="bias-badge ${biasClass}">${data.bias} BIAS</div>
+                </div>
+                <div class="stat-grid">
+                    <div class="stat">
+                        <div class="stat-label">Nearest Order Block</div>
+                        ${obHtml}
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Nearest Fair Value Gap</div>
+                        ${fvgHtml}
+                    </div>
+                </div>
+                <div style="margin-top: 1.5rem; font-size: 0.7rem; color: #8b949e; text-align: center;">
+                    Data from yfinance (GC=F) · Not financial advice
+                </div>
+            `;
+        }
+
+        async function loadSignals() {
+            try {
+                const response = await fetch('signals.json?t=' + Date.now());
+                if (!response.ok) throw new Error('signals.json not found');
+                const data = await response.json();
+                render(data);
+            } catch (err) {
+                document.getElementById('app').innerHTML = 
+                    `<div class="error">⚠️ Could not load signals.json<br><small>${err.message}</small></div>`;
+            }
+        }
+
+        loadSignals();
+        // Refresh every 5 minutes
+        setInterval(loadSignals, 300000);
+    </script>
+</body>
+</html>
